@@ -60,6 +60,16 @@ const ROLE_TEAMS: Record<RoleType, TeamType> = {
   'Alma Atormentadora': 'Caos (Independiente)',
 };
 
+// High-entropy Fisher-Yates shuffle algorithm
+function fisherYatesShuffle<T>(arr: T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
 function balanceRolesForPlayers(playerCount: number): RoleType[] {
   const roles: RoleType[] = [];
   if (playerCount <= 3) {
@@ -77,7 +87,7 @@ function balanceRolesForPlayers(playerCount: number): RoleType[] {
   } else if (playerCount === 9) {
     roles.push('Asesino', 'El Fotógrafo', 'El Escolta', 'El Médico Forense', 'El Chismoso', 'El Camaleón', 'El Cómplice / Hacker', 'El Paranoico', 'El Periodista');
   } else {
-    // 10+
+    // 10+ jugadores: 2 Asesinos + roles clave de investigación y engaño
     roles.push(
       'Asesino',
       'Asesino',
@@ -95,8 +105,8 @@ function balanceRolesForPlayers(playerCount: number): RoleType[] {
     }
   }
 
-  // Shuffle roles
-  return roles.sort(() => Math.random() - 0.5);
+  // Double-pass Fisher-Yates shuffle for zero positional bias
+  return fisherYatesShuffle(fisherYatesShuffle(roles));
 }
 
 // AI Group Chat Intervention: listens to group chatter and intervenes with dynamic wit
@@ -107,8 +117,8 @@ async function triggerAIGroupIntervention(room: RoomData, senderName: string, me
     .map((m) => `${m.senderName}: "${m.content}"`)
     .join('\n');
 
-  const alivePlayers = room.players.filter((p) => p.isAlive).map((p) => p.name).join(', ');
-  const deadPlayers = room.players.filter((p) => !p.isAlive).map((p) => p.name).join(', ');
+  const aliveList = room.players.filter((p) => p.isAlive).map((p) => p.name);
+  const deadList = room.players.filter((p) => !p.isAlive).map((p) => p.name);
   const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   let aiIntervention = '';
@@ -116,12 +126,24 @@ async function triggerAIGroupIntervention(room: RoomData, senderName: string, me
   try {
     const ai = getAI();
     if (ai) {
-      const prompt = `Eres el ÁRBITRO IA y Maestro de la Fiesta en un juego presencial de deducción social en tiempo real entre amigos.
-Estás monitoreando el chat grupal que todos ven en sus celulares mientras se miran a la cara en la casa.
-Jugadores vivos: ${alivePlayers}.
-Almas caídas: ${deadPlayers || 'ninguno aún'}.
-Anécdotas y lore del grupo:
-- Luisda el migajero (siempre deja migajas).
+      const prompt = `Eres el ÁRBITRO IA y Maestro del Juego de deducción social de una fiesta real entre amigos en una casa.
+Estás monitoreando el chat general de la aplicación.
+
+DATOS VERIFICADOS DE LA SALA (HECHOS REALES, NO INVENTAR NADA FUERA DE AQUÍ):
+- Jugadores vivos en la sala: ${aliveList.join(', ') || 'ninguno'}.
+- Jugadores fallecidos / almas de ultratumba: ${deadList.join(', ') || 'ninguno aún'}.
+- Historial de asesinatos registrados: ${room.state.murderHistory.map((m) => `${m.victimName} (pista: "${m.clue}")`).join(', ') || 'aún no hay muertes'}.
+- Fase actual: ${room.state.phase} | Ronda de asamblea: ${room.state.meetingRound} | Progreso de fiesta: ${room.state.collectiveTaskProgress}%.
+
+DIRECTIVAS ESTRICTAS CONTRA ALUCINACIONES (OBLIGATORIO):
+1. PROHIBIDO INVENTAR NOMBRES: Únicamente puedes mencionar a los jugadores reales presentes en la lista anterior (${aliveList.join(', ')}${deadList.length ? ', ' + deadList.join(', ') : ''}). Jamás inventes personas ficticias.
+2. PROHIBIDO INVENTAR ROLES O REGLAS: Los únicos roles existentes en este juego son: Inocente, Asesino, El Fotógrafo, El Chismoso, El Médico Forense, El Escolta, El Camaleón, El Cómplice / Hacker, El Paranoico, El Periodista, Alma Atormentadora. No menciones roles de otros juegos como Vidente, Bruja, Lobo, etc.
+3. ESTRICTA VERDAD SOBRE ESTADO DE JUGADORES: No digas que alguien murió o fue eliminado a menos que figure explícitamente en la lista de fallecidos. Si están vivos, trátalos como vivos en la fiesta.
+4. SI NO TIENES INFORMACIÓN O TE PIDEN DELATAR: Di que el Árbitro observa pero no revela identidades secretas para no arruinar la fiesta, o que no tienes pruebas forenses aún.
+5. LONGITUD: Máximo 1 o 2 oraciones concisas, picantes y afiladas.
+
+Anécdotas del grupo para sazonar el comentario:
+- Luisda el migajero (siempre deja migajas de comida).
 - León el mandilón.
 - Uriel la rata (tacaño con comida/tragos).
 - El caballo en Día de Muertos.
@@ -129,19 +151,16 @@ Anécdotas y lore del grupo:
 - Meta AI el metiche.
 - En Cancún todo cambió para bien.
 - Todos odian a Majo y a la canción Superestrella.
-- Los Hidrotemplados es la gran banda mítica.
+- Los Hidrotemplados es la banda mítica.
 - Siempre comen pizza o van al Seven.
-- La frase secreta de muerte es: "¿Qué traes allí?".
+- La frase secreta para asesinar susurrada al oído es: "¿Qué traes allí?".
 
 Historial reciente del chat general:
 ${recentMessages}
 
-${senderName} acaba de decir: "${messageContent}".
+${senderName} acaba de escribir: "${messageContent}".
 
-Tu labor: Intervén como Árbitro IA con un comentario muy breve (máximo 1 o 2 oraciones concisas), picante, hilarante o misterioso.
-- Si te preguntaron o mencionaron (@IA o @árbitro), responde directamente con tono de juez supremo de la fiesta.
-- Si se están acusando o debatiendo, siembra cizaña, señala una contradicción, advierte de las sombras o cita una anécdota.
-- NUNCA reveles explícitamente quién es el asesino.`;
+Tu intervención breve como Árbitro IA:`;
 
       const resp = await ai.models.generateContent({
         model: 'gemini-3.8-flash',
@@ -195,27 +214,42 @@ setInterval(() => {
     if (room.state.phaseTimeRemaining <= 0) {
       room.state.phase = room.state.phase === 'Día' ? 'Noche' : 'Día';
       room.state.phaseTimeRemaining = room.state.phaseDuration;
+    }
 
-      // Reveal pending photographer investigations
-      room.players.forEach((p) => {
-        if (p.investigationPending) {
-          const target = room.players.find((t) => t.id === p.investigationPending?.targetId);
-          const isHostile = target?.team === 'Sombras (Asesinos)';
+    // Reveal pending photographer investigations when countdown expires or on phase change
+    room.players.forEach((p) => {
+      if (p.investigationPending && (Date.now() >= p.investigationPending.revealTime || room.state.phaseTimeRemaining <= 0)) {
+        const target = room.players.find((t) => t.id === p.investigationPending?.targetId);
+        if (target) {
+          const isHostile = target.team === 'Sombras (Asesinos)';
+          const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const photoRecord = {
+            id: 'photo_' + Date.now(),
+            targetId: target.id,
+            targetName: target.name,
+            team: target.team,
+            isHostile,
+            revealedAt: timeStr,
+          };
+          p.revealedPhotos = p.revealedPhotos || [];
+          p.revealedPhotos.unshift(photoRecord);
+
           room.chatMessages.push({
             id: 'rev_' + Date.now(),
             senderId: 'system',
             senderName: 'ÁRBITRO IA (LAB FOTO)',
             receiverId: p.id,
-            content: `📷 REVELADO DE FOTO: El análisis espectral de ${target?.name} arroja que pertenece a: ${
+            content: `📷 REVELADO DE FOTO: El análisis espectral de "${target.name}" indica que su bando es: ${
               isHostile ? '🔴 SOMBRAS (Bando Asesino)' : '🟢 FIESTA (Inocente)'
-            }.`,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            }. El informe confidencial ha quedado guardado en tu Credencial de Rol.`,
+            timestamp: timeStr,
             isAI: true,
+            isSystem: true,
           });
-          p.investigationPending = undefined;
         }
-      });
-    }
+        p.investigationPending = undefined;
+      }
+    });
 
     // Emergency timer
     if (room.state.isEmergencyActive) {
@@ -225,11 +259,36 @@ setInterval(() => {
       }
     }
 
-    // Event timer
-    if (room.state.eventTimeRemaining > 0) {
-      room.state.eventTimeRemaining -= 1;
-      if (room.state.eventTimeRemaining <= 0) {
-        room.state.activeEvent = null;
+    // Event timer & Periodic automatic event system
+    if (room.state.status === 'playing' && !room.state.isEmergencyActive) {
+      if (room.state.eventTimeRemaining > 0) {
+        room.state.eventTimeRemaining -= 1;
+        if (room.state.eventTimeRemaining <= 0) {
+          room.state.activeEvent = null;
+          // Cooldown for next random event: between 75 and 135 seconds (~1.5 - 2.2 min)
+          room.state.nextEventCooldown = 75 + Math.floor(Math.random() * 60);
+        }
+      } else {
+        if (room.state.nextEventCooldown === undefined) {
+          room.state.nextEventCooldown = 60;
+        }
+        room.state.nextEventCooldown -= 1;
+        if (room.state.nextEventCooldown <= 0) {
+          const nextEv = getRandomEvent(room.state.activeEvent?.id);
+          room.state.activeEvent = nextEv;
+          room.state.eventTimeRemaining = nextEv.durationSeconds;
+          room.state.nextEventCooldown = 80 + Math.floor(Math.random() * 60);
+
+          room.chatMessages.push({
+            id: 'auto_ev_' + Date.now(),
+            senderId: 'system',
+            senderName: 'ÁRBITRO IA',
+            receiverId: null,
+            content: `🚨 ¡EVENTO DE FIESTA: "${nextEv.title}"! ${nextEv.instructions} (Tiempo: ${nextEv.durationSeconds}s).`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isSystem: true,
+          });
+        }
       }
     }
 
@@ -437,9 +496,14 @@ app.post('/api/rooms/:roomCode/start', async (req, res) => {
 
   // Distribute balanced roles
   const assignedRoles = balanceRolesForPlayers(room.players.length);
-  room.players = room.players.map((p, idx) => {
-    const role = assignedRoles[idx];
+  // Also shuffle player order mapping so host doesn't always receive the first role
+  const playerShuffleOrder = fisherYatesShuffle(room.players.map((_, i) => i));
+
+  room.players = room.players.map((p, originalIdx) => {
+    const randomizedRoleIdx = playerShuffleOrder.indexOf(originalIdx);
+    const role = assignedRoles[randomizedRoleIdx];
     const team = ROLE_TEAMS[role] || 'Fiesta (Inocentes)';
+    const isShadow = team === 'Sombras (Asesinos)';
     return {
       ...p,
       role,
@@ -450,7 +514,7 @@ app.post('/api/rooms/:roomCode/start', async (req, res) => {
       hasBulletproofVest: false,
       doubleVotesAvailable: 0,
       victimCode: Math.floor(1000 + Math.random() * 9000).toString(),
-      missions: generateFivePlayerMissions(false),
+      missions: generateFivePlayerMissions(false, isShadow),
       chismosoUsed: false,
       camaleonUsed: false,
       hackerUsed: false,
@@ -464,8 +528,10 @@ app.post('/api/rooms/:roomCode/start', async (req, res) => {
   room.state.phaseTimeRemaining = room.state.phaseDuration;
   room.state.meetingRound = 1;
   room.state.collectiveTaskProgress = 0;
-  room.state.activeEvent = PARTY_EVENTS[0];
-  room.state.eventTimeRemaining = 60;
+  const initialEvent = getRandomEvent();
+  room.state.activeEvent = initialEvent;
+  room.state.eventTimeRemaining = initialEvent.durationSeconds;
+  room.state.nextEventCooldown = 90;
 
   // Generate AI Opening with Gemini
   const playerNames = room.players.map((p) => p.name).join(', ');
@@ -475,7 +541,7 @@ app.post('/api/rooms/:roomCode/start', async (req, res) => {
     const ai = getAI();
     if (ai) {
       const prompt = `Eres el Árbitro IA y Maestro del Crimen de un juego presencial de deducción social en una fiesta real entre amigos.
-Los jugadores presentes son: ${playerNames}.
+Los únicos jugadores presentes en esta sala son exactamente: ${playerNames}. (PROHIBIDO INVENTAR OTROS NOMBRES).
 El grupo tiene estas anécdotas y bromas internas:
 - Luisda es el migajero.
 - León es mandilón.
@@ -744,7 +810,7 @@ La pista no debe revelar directamente el nombre del asesino, sino un detalle sen
 
       let earnedCoins = 0;
       if (mission.completed) {
-        earnedCoins = mission.rewardCoins || 10;
+        earnedCoins = mission.rewardCoins || (mission.type === 'sombra' ? 12 : 10);
         actingPlayer.coins = (actingPlayer.coins || 0) + earnedCoins;
 
         room.chatMessages.push({
@@ -757,10 +823,25 @@ La pista no debe revelar directamente el nombre del asesino, sino un detalle sen
           isSystem: true,
           isAI: true,
         });
+
+        // Si fue una misión del bando de las Sombras, genera una pista sospechosa pública que ayuda a los buenos
+        if (mission.type === 'sombra') {
+          room.chatMessages.push({
+            id: 'shadow_trace_' + Date.now(),
+            senderId: 'system',
+            senderName: 'ÁRBITRO FORENSE',
+            receiverId: null,
+            content: `👁️ RASTRO DETECTADO: Alguien de las Sombras ejecutó una acción sospechosa en la casa (Completó encubierto: "${mission.title}"). ¡Observen con atención quién estuvo actuando de forma extraña recientemente!`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isSystem: true,
+            isAI: true,
+          });
+        }
       }
 
-      // Increase collective task bar
-      room.state.collectiveTaskProgress = Math.min(100, room.state.collectiveTaskProgress + 5);
+      // Increase collective task bar (las misiones de sombra ayudan a los buenos con +7%)
+      const progressBonus = mission.type === 'sombra' ? 7 : 5;
+      room.state.collectiveTaskProgress = Math.min(100, room.state.collectiveTaskProgress + progressBonus);
 
       return res.json({
         success: true,
@@ -788,28 +869,62 @@ La pista no debe revelar directamente el nombre del asesino, sino un detalle sen
       isSystem: true,
     });
 
-    return res.json({ success: true });
+    room.chatMessages.push({
+      id: 'emp_hacker_' + Date.now(),
+      senderId: 'system',
+      senderName: 'ÁRBITRO IA (HACKER)',
+      receiverId: actingPlayer.id,
+      content: `⚡ ¡PULSO ACTIVADO CON ÉXITO! Has inhabilitado los teléfonos de todos los inocentes y congelado las sirenas de emergencia por 3 minutos (180s). Tus aliados de las Sombras tienen vía libre.`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isSystem: true,
+      isAI: true,
+    });
+
+    return res.json({
+      success: true,
+      glitchUntil: room.state.hackerGlitchActiveUntil,
+      player: actingPlayer,
+      roomState: room.state,
+    });
   }
 
   // 7. Action: Send Chat Message
   if (actionType === 'send_message') {
-    const { receiverId, content, asChameleon } = payload;
-    const deadPlayer = room.players.find((p) => !p.isAlive);
-    const disguise = asChameleon && deadPlayer ? deadPlayer.name : undefined;
+    const { receiverId, content, asChameleon, targetDisguiseName } = payload;
+    const deadPlayers = room.players.filter((p) => !p.isAlive);
+    let disguise: string | undefined = undefined;
+
+    if (asChameleon && deadPlayers.length > 0) {
+      const chosen = targetDisguiseName
+        ? deadPlayers.find((p) => p.name.toLowerCase() === targetDisguiseName.toLowerCase())
+        : deadPlayers[0];
+      disguise = chosen ? chosen.name : deadPlayers[0].name;
+      actingPlayer.camaleonUsed = true;
+
+      room.chatMessages.push({
+        id: 'camaleon_notice_' + Date.now(),
+        senderId: 'system',
+        senderName: 'ÁRBITRO IA (CAMALEÓN)',
+        receiverId: actingPlayer.id,
+        content: `🎭 SUPLANTACIÓN EMITIDA: Tu mensaje fue enviado en el chat general haciéndote pasar por "${disguise}". Todos los demás jugadores ven el mensaje como si fuera enviado por esa alma.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isSystem: true,
+        isAI: true,
+      });
+    }
 
     const newMsg: ChatMessage = {
       id: 'msg_' + Date.now(),
       senderId: actingPlayer.id,
-      senderName: actingPlayer.name,
+      senderName: disguise || actingPlayer.name,
       receiverId: receiverId || null,
       content,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isChameleon: asChameleon,
+      isChameleon: !!disguise,
       chameleonDisguiseName: disguise,
     };
 
     room.chatMessages.push(newMsg);
-    if (asChameleon) actingPlayer.camaleonUsed = true;
 
     // AI group intervention check: when talking in general chat, the AI arbitrator listens and responds
     if (!receiverId) {
@@ -855,52 +970,241 @@ La pista no debe revelar directamente el nombre del asesino, sino un detalle sen
       }
     }
 
-    return res.json({ success: true, message: newMsg });
+    return res.json({ success: true, message: newMsg, player: actingPlayer });
   }
 
   // 8. Action: Fotógrafo Snap
   if (actionType === 'fotografo_snap') {
     const { targetId } = payload;
+    const target = room.players.find((p) => p.id === targetId);
+    if (!target) {
+      return res.status(404).json({ error: 'Objetivo fotográfico no encontrado en la sala.' });
+    }
+
+    const revealTime = Date.now() + 45 * 1000; // 45 seconds developing time
     actingPlayer.investigationPending = {
       targetId,
-      revealTime: Date.now() + 900 * 1000,
+      revealTime,
     };
-    return res.json({ success: true });
+
+    room.chatMessages.push({
+      id: 'foto_snap_' + Date.now(),
+      senderId: 'system',
+      senderName: 'ÁRBITRO IA (LAB FOTO)',
+      receiverId: actingPlayer.id,
+      content: `📷 FOTO CAPTURADA: Has enfocado a "${target.name}". El revelado químico en cuarto oscuro tardará 45 segundos. Recibirás el dictamen del bando aquí y en tu Credencial de Rol.`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isSystem: true,
+      isAI: true,
+    });
+
+    return res.json({ success: true, player: actingPlayer });
+  }
+
+  // 8b. Action: Fotógrafo Accelerate Reveal
+  if (actionType === 'fotografo_accelerate') {
+    if (!actingPlayer.investigationPending) {
+      return res.status(400).json({ error: 'No tienes ningún negativo en proceso de revelado.' });
+    }
+    const target = room.players.find((t) => t.id === actingPlayer.investigationPending?.targetId);
+    if (target) {
+      const isHostile = target.team === 'Sombras (Asesinos)';
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const photoRecord = {
+        id: 'photo_' + Date.now(),
+        targetId: target.id,
+        targetName: target.name,
+        team: target.team,
+        isHostile,
+        revealedAt: timeStr,
+      };
+      actingPlayer.revealedPhotos = actingPlayer.revealedPhotos || [];
+      actingPlayer.revealedPhotos.unshift(photoRecord);
+
+      room.chatMessages.push({
+        id: 'rev_accel_' + Date.now(),
+        senderId: 'system',
+        senderName: 'ÁRBITRO IA (LAB FOTO)',
+        receiverId: actingPlayer.id,
+        content: `📷 REVELADO INSTANTÁNEO: El dictamen químico de "${target.name}" arroja que pertenece a: ${
+          isHostile ? '🔴 SOMBRAS (Bando Asesino)' : '🟢 FIESTA (Inocente)'
+        }. El informe ha quedado archivado en tu Credencial de Rol.`,
+        timestamp: timeStr,
+        isAI: true,
+        isSystem: true,
+      });
+    }
+    actingPlayer.investigationPending = undefined;
+    return res.json({ success: true, player: actingPlayer });
+  }
+
+  // 8c. Action: Chismoso Compare
+  if (actionType === 'chismoso_compare') {
+    const { p1Id, p2Id } = payload;
+    if (actingPlayer.chismosoUsed) {
+      return res.status(400).json({ error: 'Ya has utilizado tu habilidad única de cotejo del Chismoso.' });
+    }
+
+    const p1 = room.players.find((p) => p.id === p1Id);
+    const p2 = room.players.find((p) => p.id === p2Id);
+
+    if (!p1 || !p2 || p1.id === p2.id) {
+      return res.status(400).json({ error: 'Debes seleccionar dos jugadores distintos válidos de la fiesta.' });
+    }
+
+    const sameTeam = p1.team === p2.team;
+    actingPlayer.chismosoUsed = true;
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const verdict = sameTeam
+      ? `¡COINCIDENCIA DE BANDO! ${p1.name} y ${p2.name} comparten exactamente la misma alineación de bando.`
+      : `¡BANDOS OPUESTOS! ${p1.name} y ${p2.name} pertenecen a bandos rivales (uno es Fiesta y el otro Sombras).`;
+
+    const report = {
+      id: 'chism_' + Date.now(),
+      p1Id: p1.id,
+      p1Name: p1.name,
+      p2Id: p2.id,
+      p2Name: p2.name,
+      sameTeam,
+      verdict,
+      timestamp: timeStr,
+    };
+    actingPlayer.chismosoReport = report;
+
+    room.chatMessages.push({
+      id: 'chism_msg_' + Date.now(),
+      senderId: 'system',
+      senderName: 'ÁRBITRO IA (CHISMOSO)',
+      receiverId: actingPlayer.id,
+      content: `🤫 REPORTE CONFIDENCIAL DEL CHISMOSO: Has cotejado a ${p1.name} y ${p2.name}. Dictamen: ${verdict}`,
+      timestamp: timeStr,
+      isSystem: true,
+      isAI: true,
+    });
+
+    return res.json({
+      success: true,
+      chismosoReport: report,
+      player: actingPlayer,
+    });
   }
 
   // 9. Action: Escolta Protect
   if (actionType === 'escolta_protect') {
     const { targetId } = payload;
     const target = room.players.find((p) => p.id === targetId);
-    if (target) {
-      target.protectedByEscoltaUntil = Date.now() + 900 * 1000;
-      target.hasEscoltaSpokenFaceToFace = false;
+    if (!target) {
+      return res.status(404).json({ error: 'Jugador objetivo no encontrado.' });
     }
-    return res.json({ success: true });
+
+    const protectDuration = 900 * 1000;
+    target.protectedByEscoltaUntil = Date.now() + protectDuration;
+    target.hasEscoltaSpokenFaceToFace = false;
+
+    actingPlayer.escoltaTargetId = targetId;
+    actingPlayer.escoltaProtectedUntil = target.protectedByEscoltaUntil;
+    actingPlayer.hasEscoltaSpokenFaceToFace = false;
+
+    room.chatMessages.push({
+      id: 'esc_msg_' + Date.now(),
+      senderId: 'system',
+      senderName: 'ÁRBITRO IA (ESCOLTA)',
+      receiverId: actingPlayer.id,
+      content: `🛡️ OBJETIVO DE ESCOLTA ASIGNADO: Has seleccionado proteger a ${target.name}. Debes acercarte a hablarle en persona en la fiesta y presionar "Confirmar Charla Cara a Cara" para blindarlo contra asesinatos.`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isSystem: true,
+      isAI: true,
+    });
+
+    return res.json({ success: true, player: actingPlayer });
   }
 
   // 10. Action: Confirm Escolta Face-to-Face
   if (actionType === 'escolta_confirm_face_to_face') {
-    room.players.forEach((p) => {
-      if (p.protectedByEscoltaUntil && p.protectedByEscoltaUntil > Date.now()) {
-        p.hasEscoltaSpokenFaceToFace = true;
+    actingPlayer.hasEscoltaSpokenFaceToFace = true;
+    if (actingPlayer.escoltaTargetId) {
+      const target = room.players.find((p) => p.id === actingPlayer.escoltaTargetId);
+      if (target) {
+        target.hasEscoltaSpokenFaceToFace = true;
       }
+    }
+
+    room.chatMessages.push({
+      id: 'esc_conf_' + Date.now(),
+      senderId: 'system',
+      senderName: 'ÁRBITRO IA (ESCOLTA)',
+      receiverId: actingPlayer.id,
+      content: `🛡️ ¡BLINDAJE FÍSICO CONFIRMADO! Has activado la protección física presencial. Si un asesino intenta acorralar a tu objetivo, el atentado será frustrado.`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isSystem: true,
+      isAI: true,
     });
-    return res.json({ success: true });
+
+    return res.json({ success: true, player: actingPlayer });
+  }
+
+  // 10b. Action: Periodista Investigate Theory
+  if (actionType === 'periodista_investigate') {
+    const { targetId, guessedRole } = payload;
+    const target = room.players.find((p) => p.id === targetId);
+    if (!target) {
+      return res.status(404).json({ error: 'Jugador no encontrado.' });
+    }
+
+    const isCorrect = target.role === guessedRole;
+    actingPlayer.periodistaTheories = actingPlayer.periodistaTheories || [];
+    actingPlayer.periodistaTheories.push({ targetId, guessedRole, isCorrect });
+
+    if (isCorrect) {
+      actingPlayer.coins = (actingPlayer.coins || 0) + 15;
+    }
+
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    room.chatMessages.push({
+      id: 'per_msg_' + Date.now(),
+      senderId: 'system',
+      senderName: 'ÁRBITRO IA (PRENSA)',
+      receiverId: actingPlayer.id,
+      content: isCorrect
+        ? `📰 ¡EXCLUSIVA PERIODÍSTICA VERIFICADA! Tu teoría era 100% acertada: "${target.name}" es efectivamente "${guessedRole}". Has ganado +15 monedas del Seven por tu primicia.`
+        : `📰 TEORÍA REFUTADA: Tu investigación sobre "${target.name}" concluye que NO es "${guessedRole}". Busca otra pista.`,
+      timestamp: timeStr,
+      isSystem: true,
+      isAI: true,
+    });
+
+    return res.json({
+      success: true,
+      isCorrect,
+      player: actingPlayer,
+    });
   }
 
   // 11. Action: AI Chat with Game Master
   if (actionType === 'ai_consult') {
     const { query } = payload;
-    let reply = 'Las sombras susurran en la cocina... nadie está a salvo.';
+    let reply = 'Las sombras susurran en la cocina... observa a quienes te rodean con atención.';
 
     try {
       const ai = getAI();
       if (ai) {
-        const prompt = `Eres el Árbitro IA y Dios de la Fiesta en un juego en vivo con este grupo de amigos:
-Luisda (el migajero), León (el mandilón), Uriel (la rata), Jackie (siempre comiendo en la uni), Meta AI (el metiche). Todos odian a Majo y a Superestrella, aman a Los Hidrotemplados, comen pizza y van al Seven.
-El jugador ${actingPlayer.name} te pregunta: "${query}".
-Responde con tono de oráculo sarcástico, misterioso y divertido, dando pistas sutiles sin arruinar roles explícitos. Máximo 2 frases.`;
+        const aliveNames = room.players.filter((p) => p.isAlive).map((p) => p.name).join(', ');
+        const deadNames = room.players.filter((p) => !p.isAlive).map((p) => p.name).join(', ');
+        const prompt = `Eres el Árbitro IA oficial del juego presencial de deducción social de fiesta entre amigos.
+El jugador ${actingPlayer.name} (rol: ${actingPlayer.role}, equipo: ${actingPlayer.team}) te consulta en privado: "${query}".
+
+DATOS REALES Y VERIFICADOS DE ESTA PARTIDA (PROHIBIDO INVENTAR NADA FUERA DE ESTOS HECHOS):
+- Jugadores vivos en la sala: ${aliveNames || 'ninguno'}.
+- Jugadores fallecidos / almas: ${deadNames || 'ninguno aún'}.
+- Fase actual: ${room.state.phase} | Progreso de la fiesta: ${room.state.collectiveTaskProgress}%.
+- Reglas oficiales del juego: Los asesinos eliminan susurrando al oído "¿Qué traes allí?". Cada jugador tiene 1 llamada de asamblea de emergencia. Las misiones dan monedas y llenan la meta colectiva para que ganen los inocentes. En la tienda del Seven se compran chalecos, votos dobles y sobornos.
+
+DIRECTIVAS ESTRICTAS CONTRA ALUCINACIONES:
+1. NUNCA inventes nombres de personas que no estén en la lista de jugadores reales.
+2. NUNCA inventes reglas, poderes fantásticos o roles que no pertenezcan al juego.
+3. Si el jugador te pide que le reveles quién es el asesino o los roles secretos de otros, niégate ingeniosamente explicando que el Árbitro cuida la integridad del juego.
+4. Si no sabes algo o te preguntan sobre hechos no ocurridos, responde con ingenio diciendo que el Árbitro solo juzga con evidencia real y no con inventos.
+5. Mantén la respuesta en máximo 2 oraciones breves, sarcásticas, misteriosas y divertidas.`;
 
         const resp = await ai.models.generateContent({
           model: 'gemini-3.8-flash',

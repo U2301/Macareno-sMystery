@@ -50,12 +50,16 @@ export const MissionsPanel: React.FC<MissionsPanelProps> = ({
       <div className="space-y-2.5">
         {missions.map((m, idx) => {
           const isExpanded = expandedId === m.id;
+          const isShadowMission = m.type === 'sombra';
+
           return (
             <div
               key={m.id}
               className={`p-3.5 rounded-2xl border transition-all ${
                 m.completed
                   ? 'bg-emerald-950/20 border-emerald-600/30'
+                  : isShadowMission
+                  ? 'bg-rose-950/20 border-rose-800/40 hover:border-rose-700/60'
                   : 'bg-neutral-950/80 border-neutral-800 hover:border-neutral-700'
               }`}
             >
@@ -66,12 +70,18 @@ export const MissionsPanel: React.FC<MissionsPanelProps> = ({
                 <div className="flex items-center gap-2.5 min-w-0">
                   {m.completed ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : isShadowMission ? (
+                    <Flame className="w-4 h-4 text-rose-400 shrink-0" />
                   ) : (
                     <Circle className="w-4 h-4 text-neutral-500 shrink-0" />
                   )}
                   <span
                     className={`text-xs font-bold truncate ${
-                      m.completed ? 'text-emerald-300 line-through' : 'text-white'
+                      m.completed
+                        ? 'text-emerald-300 line-through'
+                        : isShadowMission
+                        ? 'text-rose-200'
+                        : 'text-white'
                     }`}
                   >
                     {idx + 1}. {m.title}
@@ -79,6 +89,11 @@ export const MissionsPanel: React.FC<MissionsPanelProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
+                  {m.rewardCoins && (
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">
+                      🪙 +{m.rewardCoins}
+                    </span>
+                  )}
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400">
                     {m.currentCount}/{m.targetCount}
                   </span>
@@ -96,15 +111,33 @@ export const MissionsPanel: React.FC<MissionsPanelProps> = ({
                     {m.description}
                   </p>
 
+                  {isShadowMission && (
+                    <div className="p-2.5 rounded-xl bg-rose-950/40 border border-rose-900/40 text-[11px] text-rose-300 leading-tight">
+                      ⚠️ <strong>Misión Sospechosa de Sombra:</strong> Esta acción llama la atención en la vida real. Si la completas ganas monedas, pero avanzas la meta colectiva de la fiesta (+7%) y dejas pistas al bando de los inocentes.
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-neutral-500 font-mono">
-                      Categoría: {m.type === 'lore' ? '🔥 Lore del Grupo' : '👥 Social'}
+                    <span className="text-[10px] text-neutral-400 font-mono">
+                      {m.type === 'sombra'
+                        ? '🩸 Bando Sombras'
+                        : m.type === 'lore'
+                        ? '🔥 Lore del Grupo'
+                        : m.type === 'desafio'
+                        ? '⚡ Desafío'
+                        : m.type === 'fantasma'
+                        ? '👻 Alma en Pena'
+                        : '👥 Social'}
                     </span>
 
                     <button
                       onClick={() => onAdvanceMission(m.id)}
                       disabled={m.completed}
-                      className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-750 disabled:opacity-40 text-neutral-200 border border-neutral-700 text-xs font-bold transition flex items-center gap-1.5"
+                      className={`px-3 py-1.5 rounded-xl disabled:opacity-40 text-xs font-bold transition flex items-center gap-1.5 border ${
+                        isShadowMission
+                          ? 'bg-rose-900/60 hover:bg-rose-800/80 text-rose-100 border-rose-700/50'
+                          : 'bg-neutral-800 hover:bg-neutral-750 text-neutral-200 border-neutral-700'
+                      }`}
                     >
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                       {m.completed ? '¡Logrado!' : 'Marcar Avance (+1)'}

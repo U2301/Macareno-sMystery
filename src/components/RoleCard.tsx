@@ -16,7 +16,8 @@ import {
   CheckCircle2,
   Clock,
   Send,
-  AlertCircle
+  AlertCircle,
+  Users
 } from 'lucide-react';
 import { Player, RoleType, GamePhase, MurderReport } from '../types';
 import { ROLES_CATALOG } from '../data/roles';
@@ -26,13 +27,15 @@ interface RoleCardProps {
   players: Player[];
   currentPhase: GamePhase;
   murderHistory: MurderReport[];
+  hackerGlitchActiveUntil?: number;
   onRegisterKill: (code: string) => { success: boolean; message: string };
   onTriggerHackerPulse: () => void;
-  onUseChismoso: (p1Id: string, p2Id: string) => { sameTeam: boolean };
+  onUseChismoso: (p1Id: string, p2Id: string) => Promise<{ success: boolean; error?: string; chismosoReport?: any }> | { sameTeam: boolean };
   onUseEscolta: (targetId: string) => void;
   onConfirmEscoltaFaceToFace: () => void;
   onUseFotografo: (targetId: string) => void;
-  onSubmitPeriodistaTheory: (targetId: string, role: RoleType) => boolean;
+  onAccelerateFotografo?: () => void;
+  onSubmitPeriodistaTheory: (targetId: string, role: RoleType) => Promise<boolean> | boolean;
 }
 
 export const RoleCard: React.FC<RoleCardProps> = ({
@@ -40,12 +43,14 @@ export const RoleCard: React.FC<RoleCardProps> = ({
   players,
   currentPhase,
   murderHistory,
+  hackerGlitchActiveUntil,
   onRegisterKill,
   onTriggerHackerPulse,
   onUseChismoso,
   onUseEscolta,
   onConfirmEscoltaFaceToFace,
   onUseFotografo,
+  onAccelerateFotografo,
   onSubmitPeriodistaTheory,
 }) => {
   const [showSecret, setShowSecret] = useState(false);
@@ -56,6 +61,7 @@ export const RoleCard: React.FC<RoleCardProps> = ({
   const [chismosoP1, setChismosoP1] = useState('');
   const [chismosoP2, setChismosoP2] = useState('');
   const [chismosoResult, setChismosoResult] = useState<string | null>(null);
+  const [chismosoLoading, setChismosoLoading] = useState(false);
 
   const [escoltaTarget, setEscoltaTarget] = useState('');
   const [fotografoTarget, setFotografoTarget] = useState('');
@@ -66,6 +72,13 @@ export const RoleCard: React.FC<RoleCardProps> = ({
   const roleDef = ROLES_CATALOG[player.role];
   const isGhost = !player.isAlive;
   const aliveOthers = players.filter((p) => p.isAlive && p.id !== player.id);
+  const deadPlayers = players.filter((p) => !p.isAlive);
+
+  // Shadow team allies (for Asesino, Hacker, Camaleón)
+  const isShadowTeam = player.team.includes('Sombras');
+  const shadowAllies = players.filter(
+    (p) => p.id !== player.id && p.team.includes('Sombras')
+  );
 
   const handleKillSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,27 +89,43 @@ export const RoleCard: React.FC<RoleCardProps> = ({
     setTimeout(() => setKillFeedback(null), 4000);
   };
 
-  const handleChismosoSubmit = () => {
+  const handleChismosoSubmit = async () => {
     if (!chismosoP1 || !chismosoP2 || chismosoP1 === chismosoP2) return;
-    const res = onUseChismoso(chismosoP1, chismosoP2);
-    setChismosoResult(
-      res.sameTeam
-        ? '¡Coincidencia! Ambos jugadores comparten la misma alineación de bando.'
-        : '¡Bando opuesto! Uno de ellos pertenece a un bando rival del otro.'
-    );
+    setChismosoLoading(true);
+    try {
+      const res: any = await onUseChismoso(chismosoP1, chismosoP2);
+      if (res && res.chismosoReport) {
+        setChismosoResult(res.chismosoReport.verdict);
+      } else if (res && res.sameTeam !== undefined) {
+        setChismosoResult(
+          res.sameTeam
+            ? '¡Coincidencia! Ambos jugadores pertenecen exactamente al mismo bando.'
+            : '¡Bandos Opuestos! Uno de ellos es Fiesta y el otro Sombras.'
+        );
+      }
+    } catch (e) {
+      console.error('Chismoso error:', e);
+    } finally {
+      setChismosoLoading(false);
+    }
   };
 
-  const handlePeriodistaSubmit = () => {
+  const handlePeriodistaSubmit = async () => {
     if (!periodistaTarget) return;
-    const correct = onSubmitPeriodistaTheory(periodistaTarget, periodistaRoleGuess);
+    const correct = await onSubmitPeriodistaTheory(periodistaTarget, periodistaRoleGuess);
     const targetName = players.find(p => p.id === periodistaTarget)?.name;
     setPeriodistaFeedback(
       correct
-        ? `¡Primicia confirmada! Has acertado: ${targetName} es ${periodistaRoleGuess}.`
-        : `Pista refutada: ${targetName} no ostenta ese rol.`
+        ? `¡Primicia confirmada! Has acertado: ${targetName} es ${periodistaRoleGuess}. (+15 monedas del Seven)`
+        : `Pista refutada: ${targetName} NO ostenta ese rol.`
     );
-    setTimeout(() => setPeriodistaFeedback(null), 4000);
+    setTimeout(() => setPeriodistaFeedback(null), 5000);
   };
+
+  const isGlitchActive = !!(hackerGlitchActiveUntil && hackerGlitchActiveUntil > Date.now());
+  const glitchSecsLeft = isGlitchActive
+    ? Math.max(0, Math.ceil((hackerGlitchActiveUntil! - Date.now()) / 1000))
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -197,7 +226,7 @@ export const RoleCard: React.FC<RoleCardProps> = ({
 
         {/* 1. ASESINO */}
         {player.role === 'Asesino' && (
-          <div className="space-y-3">
+          <div className="space-y-4">
             <p className="text-xs text-neutral-300 leading-relaxed">
               Acorrala a un invitado a solas (sin testigos a 3m), susúrrale discretamente al oído la frase: <strong className="text-rose-400">"¿Qué traes allí?"</strong> y solicita su Código Secreto de 4 dígitos. Ingrésalo aquí para confirmar su baja:
             </p>
@@ -229,27 +258,63 @@ export const RoleCard: React.FC<RoleCardProps> = ({
                 {killFeedback.message}
               </div>
             )}
+
+            {/* Shadow Allies Syndicate */}
+            {shadowAllies.length > 0 && (
+              <div className="p-3 rounded-2xl bg-rose-950/30 border border-rose-900/40 text-xs space-y-1.5">
+                <div className="flex items-center gap-1.5 text-rose-300 font-bold uppercase tracking-wider text-[10px]">
+                  <Users className="w-3.5 h-3.5" />
+                  Tus Aliados de las Sombras:
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {shadowAllies.map((a) => (
+                    <span
+                      key={a.id}
+                      className="px-2 py-0.5 rounded-lg bg-rose-900/50 border border-rose-700/60 text-rose-200 text-[11px] font-semibold"
+                    >
+                      {a.name} ({a.role})
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* 2. EL FOTÓGRAFO */}
         {player.role === 'El Fotógrafo' && (
-          <div className="space-y-3 text-xs">
+          <div className="space-y-4 text-xs">
             <p className="text-neutral-300 leading-relaxed">
-              Toma una foto rápida a un jugador en persona con la app. Tras 15 minutos (o al cambiar de fase), tu cuarto oscuro digital revelará si esa persona es Inocente o Hostil.
+              Toma una fotografía rápida a un invitado en persona con la app. Tras el revelado en cuarto oscuro (45s o forzado manual), descubrirás su verdadera alineación:
             </p>
 
             {player.investigationPending ? (
-              <div className="p-3.5 rounded-2xl bg-sky-950/40 border border-sky-600/30 text-sky-200">
-                <div className="flex items-center gap-2 font-bold mb-1">
-                  <Clock className="w-4 h-4 text-sky-400" />
-                  Revelado en proceso
+              <div className="p-4 rounded-2xl bg-sky-950/50 border border-sky-600/40 text-sky-200 space-y-2">
+                <div className="flex items-center justify-between font-bold">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-sky-400 animate-spin" />
+                    <span>Revelado Químico en Proceso</span>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-900 text-sky-300 font-mono">
+                    En laboratorio
+                  </span>
                 </div>
-                <p className="text-[11px]">
-                  Analizando la fotografía de{' '}
-                  <strong>{players.find((p) => p.id === player.investigationPending?.targetId)?.name}</strong>.
-                  Recibirás el dictamen confidencial en la siguiente rotación.
+                <p className="text-[11px] text-sky-100">
+                  Analizando el negativo de{' '}
+                  <strong className="text-white">
+                    {players.find((p) => p.id === player.investigationPending?.targetId)?.name || 'Objetivo'}
+                  </strong>
+                  .
                 </p>
+                {onAccelerateFotografo && (
+                  <button
+                    onClick={onAccelerateFotografo}
+                    className="w-full mt-2 py-2 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    Revelar Negativo Ahora Mismo
+                  </button>
+                )}
               </div>
             ) : (
               <div className="space-y-2">
@@ -258,7 +323,7 @@ export const RoleCard: React.FC<RoleCardProps> = ({
                   onChange={(e) => setFotografoTarget(e.target.value)}
                   className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-sky-500"
                 >
-                  <option value="">Selecciona al jugador fotografiado...</option>
+                  <option value="">Selecciona al jugador a fotografiar...</option>
                   {aliveOthers.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
@@ -280,19 +345,92 @@ export const RoleCard: React.FC<RoleCardProps> = ({
                 </button>
               </div>
             )}
+
+            {/* Permanent Photo Gallery of Revealed Targets */}
+            {player.revealedPhotos && player.revealedPhotos.length > 0 && (
+              <div className="space-y-2 pt-2 border-t border-neutral-800">
+                <div className="flex items-center justify-between text-neutral-400 font-semibold text-[11px]">
+                  <span className="flex items-center gap-1.5">
+                    <Camera className="w-3.5 h-3.5 text-sky-400" />
+                    Galería de Negativos Revelados ({player.revealedPhotos.length})
+                  </span>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {player.revealedPhotos.map((photo) => (
+                    <div
+                      key={photo.id}
+                      className={`p-3 rounded-xl border flex items-center justify-between ${
+                        photo.isHostile
+                          ? 'bg-rose-950/40 border-rose-700/50 text-rose-200'
+                          : 'bg-emerald-950/40 border-emerald-700/50 text-emerald-200'
+                      }`}
+                    >
+                      <div>
+                        <div className="font-bold text-white text-xs">{photo.targetName}</div>
+                        <div className="text-[10px] opacity-75 font-mono">Revelado a las {photo.revealedAt}</div>
+                      </div>
+                      <span
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${
+                          photo.isHostile
+                            ? 'bg-rose-600 text-white'
+                            : 'bg-emerald-600 text-white'
+                        }`}
+                      >
+                        {photo.isHostile ? '🔴 HOSTIL (Sombras)' : '🟢 INOCENTE (Fiesta)'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* 3. EL CHISMOSO */}
         {player.role === 'El Chismoso' && (
-          <div className="space-y-3 text-xs">
+          <div className="space-y-4 text-xs">
             <p className="text-neutral-300">
-              Compara a 2 jugadores una sola vez por partida para saber si comparten la misma alineación o son enemigos:
+              Compara a 2 jugadores una sola vez por partida para descubrir si comparten la misma alineación o son enemigos:
             </p>
 
-            {player.chismosoUsed ? (
-              <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 text-neutral-400">
-                Ya has utilizado tu habilidad única de cotejo de rumores.
+            {player.chismosoReport || player.chismosoUsed ? (
+              <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-amber-100 space-y-2">
+                <div className="flex items-center justify-between font-bold">
+                  <div className="flex items-center gap-1.5 text-amber-300">
+                    <CheckCircle2 className="w-4 h-4 text-amber-400" />
+                    <span>Expediente de Cotejo Oficial</span>
+                  </div>
+                  {player.chismosoReport?.timestamp && (
+                    <span className="text-[10px] font-mono text-amber-400/80">
+                      {player.chismosoReport.timestamp}
+                    </span>
+                  )}
+                </div>
+                {player.chismosoReport ? (
+                  <>
+                    <div className="flex items-center gap-2 text-white font-bold text-xs">
+                      <span>{player.chismosoReport.p1Name}</span>
+                      <span className="text-neutral-400">vs</span>
+                      <span>{player.chismosoReport.p2Name}</span>
+                      <span
+                        className={`text-[10px] ml-auto px-2 py-0.5 rounded-full font-bold ${
+                          player.chismosoReport.sameTeam
+                            ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50'
+                            : 'bg-rose-500/30 text-rose-300 border border-rose-500/50'
+                        }`}
+                      >
+                        {player.chismosoReport.sameTeam ? 'Mismo Bando' : 'Bandos Opuestos'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-amber-100 leading-relaxed font-medium">
+                      {player.chismosoReport.verdict}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-neutral-300">
+                    {chismosoResult || 'Habilidad de cotejo de rumores ya utilizada.'}
+                  </p>
+                )}
               </div>
             ) : (
               <div className="space-y-2">
@@ -321,11 +459,11 @@ export const RoleCard: React.FC<RoleCardProps> = ({
 
                 <button
                   onClick={handleChismosoSubmit}
-                  disabled={!chismosoP1 || !chismosoP2 || chismosoP1 === chismosoP2}
+                  disabled={chismosoLoading || !chismosoP1 || !chismosoP2 || chismosoP1 === chismosoP2}
                   className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-xl font-bold transition flex items-center justify-center gap-1.5"
                 >
                   <MessageCircle className="w-3.5 h-3.5" />
-                  Analizar Lazos Ocultos (1 solo uso)
+                  {chismosoLoading ? 'Cotejando rumores...' : 'Analizar Lazos Ocultos (1 solo uso)'}
                 </button>
 
                 {chismosoResult && (
@@ -370,7 +508,7 @@ export const RoleCard: React.FC<RoleCardProps> = ({
         {player.role === 'El Escolta' && (
           <div className="space-y-3 text-xs">
             <p className="text-neutral-300">
-              Selecciona a quién proteger cada 15 min. <strong>Regla IRL:</strong> Debes hablar cara a cara con esa persona al menos una vez para que el escudo se active.
+              Selecciona a quién proteger cada 15 min. <strong>Regla Presencial:</strong> Debes hablar cara a cara con esa persona al menos una vez para que el escudo se active.
             </p>
 
             <div className="space-y-2">
@@ -398,20 +536,45 @@ export const RoleCard: React.FC<RoleCardProps> = ({
                 Asignar Protección
               </button>
 
-              {player.protectedByEscoltaUntil && player.protectedByEscoltaUntil > Date.now() && (
-                <div className="p-3 rounded-xl bg-indigo-950/40 border border-indigo-600/30 text-indigo-200 flex items-center justify-between">
-                  <span>
-                    Objetivo protegido: <strong>{players.find(p => p.id === escoltaTarget)?.name}</strong>
-                  </span>
+              {/* Display current protected target */}
+              {player.escoltaTargetId && (
+                <div className="p-3.5 rounded-2xl bg-indigo-950/50 border border-indigo-600/40 text-indigo-200 space-y-2">
+                  <div className="flex items-center justify-between font-bold">
+                    <span>
+                      Escoltando a:{' '}
+                      <strong className="text-white">
+                        {players.find((p) => p.id === player.escoltaTargetId)?.name || 'Jugador'}
+                      </strong>
+                    </span>
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        player.hasEscoltaSpokenFaceToFace
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-amber-600 text-white'
+                      }`}
+                    >
+                      {player.hasEscoltaSpokenFaceToFace ? '✓ Blindaje Activo' : '⚠️ Charla Pendiente'}
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-indigo-300">
+                    {player.hasEscoltaSpokenFaceToFace
+                      ? 'Has confirmado la interacción presencial. Tu protegido sobrevivirá al siguiente intento de asesinato.'
+                      : 'Acércate en la fiesta y háblale en persona, luego pulsa el botón abajo para consolidar la protección.'}
+                  </p>
+
                   <button
                     onClick={onConfirmEscoltaFaceToFace}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${
+                    className={`w-full py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
                       player.hasEscoltaSpokenFaceToFace
-                        ? 'bg-emerald-950 border-emerald-600 text-emerald-300'
-                        : 'bg-indigo-900 border-indigo-700 text-white hover:bg-indigo-800'
+                        ? 'bg-emerald-950 border border-emerald-600 text-emerald-300'
+                        : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow'
                     }`}
                   >
-                    {player.hasEscoltaSpokenFaceToFace ? '✓ Conversación IRL Realizada' : 'Confirmar Charla Cara a Cara'}
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {player.hasEscoltaSpokenFaceToFace
+                      ? '✓ Charla Cara a Cara Confirmada'
+                      : 'Confirmar Charla Cara a Cara en la Fiesta'}
                   </button>
                 </div>
               )}
@@ -423,16 +586,116 @@ export const RoleCard: React.FC<RoleCardProps> = ({
         {player.role === 'El Cómplice / Hacker' && (
           <div className="space-y-3 text-xs">
             <p className="text-neutral-300">
-              Desata un pulso electromagnético (EMP) una vez por partida para glitchear e inhabilitar los teléfonos de todos los inocentes durante 3 minutos.
+              Desata un pulso electromagnético (EMP) una vez por partida para glitchear e inhabilitar los teléfonos de todos los inocentes durante 3 minutos y congelar las sirenas de emergencia.
             </p>
+
+            {isGlitchActive && (
+              <div className="p-3.5 rounded-2xl bg-red-950/60 border border-red-500 text-red-200 animate-pulse space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-red-400">
+                  <Zap className="w-4 h-4 text-amber-300" />
+                  ⚡ PULSO EMP ACTIVO: {glitchSecsLeft}s restantes
+                </div>
+                <p className="text-[11px] text-red-100">
+                  Las pantallas de los inocentes están saturadas con estática cibernética. Tus asesinos tienen vía libre para actuar.
+                </p>
+              </div>
+            )}
+
             <button
               onClick={onTriggerHackerPulse}
-              disabled={player.hackerUsed}
+              disabled={player.hackerUsed || isGlitchActive}
               className="w-full py-3 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 disabled:opacity-30 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-950/40 transition"
             >
               <Zap className="w-4 h-4 text-amber-300" />
-              {player.hackerUsed ? 'Interferencia Ya Utilizada' : 'Activar Pulso EMP (3 Minutos de Bloqueo)'}
+              {player.hackerUsed
+                ? 'Interferencia Ya Utilizada'
+                : 'Activar Pulso EMP (3 Minutos de Bloqueo)'}
             </button>
+
+            {/* Shadow Allies Syndicate */}
+            {shadowAllies.length > 0 && (
+              <div className="p-3 rounded-2xl bg-rose-950/30 border border-rose-900/40 text-xs space-y-1.5">
+                <div className="flex items-center gap-1.5 text-rose-300 font-bold uppercase tracking-wider text-[10px]">
+                  <Users className="w-3.5 h-3.5" />
+                  Tus Aliados de las Sombras:
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {shadowAllies.map((a) => (
+                    <span
+                      key={a.id}
+                      className="px-2 py-0.5 rounded-lg bg-rose-900/50 border border-rose-700/60 text-rose-200 text-[11px] font-semibold"
+                    >
+                      {a.name} ({a.role})
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 6b. EL CAMALEÓN */}
+        {player.role === 'El Camaleón' && (
+          <div className="space-y-3 text-xs">
+            <p className="text-neutral-300">
+              Una vez por partida, suplanta la identidad de un jugador eliminado en el chat general para emitir coartadas falsas, acusaciones o sembrar desinformación.
+            </p>
+
+            {player.camaleonUsed ? (
+              <div className="p-3.5 rounded-2xl bg-purple-950/40 border border-purple-600/40 text-purple-200">
+                <div className="flex items-center gap-1.5 font-bold mb-1">
+                  <CheckCircle2 className="w-4 h-4 text-purple-400" />
+                  Suplantación Emitida
+                </div>
+                <p className="text-[11px]">
+                  Tu mensaje encubierto ya fue difundido en el chat de la fiesta bajo el nombre de una víctima.
+                </p>
+              </div>
+            ) : deadPlayers.length === 0 ? (
+              <div className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800 text-neutral-400 space-y-1">
+                <div className="font-bold text-neutral-300 flex items-center gap-1.5">
+                  <Ghost className="w-4 h-4 text-purple-400" />
+                  Esperando la Primera Baja
+                </div>
+                <p className="text-[11px]">
+                  Aún no hay almas fallecidas en la fiesta. Podrás suplantar la voz de la víctima en el chat en cuanto ocurra el primer asesinato.
+                </p>
+              </div>
+            ) : (
+              <div className="p-3.5 rounded-2xl bg-purple-950/50 border border-purple-600/50 text-purple-200 space-y-2">
+                <div className="font-bold flex items-center gap-1.5 text-purple-300">
+                  <Sparkles className="w-4 h-4 text-purple-400" />
+                  Habilidad Lista para Usarse en el Chat
+                </div>
+                <p className="text-[11px] text-purple-100">
+                  Ve a la pestaña <strong>Chat</strong> y pulsa el botón morado <strong>"Suplantar Identidad"</strong> para hablar fingiendo ser:{' '}
+                  <strong className="text-white">
+                    {deadPlayers.map((d) => d.name).join(', ')}
+                  </strong>
+                  .
+                </p>
+              </div>
+            )}
+
+            {/* Shadow Allies Syndicate */}
+            {shadowAllies.length > 0 && (
+              <div className="p-3 rounded-2xl bg-rose-950/30 border border-rose-900/40 text-xs space-y-1.5">
+                <div className="flex items-center gap-1.5 text-rose-300 font-bold uppercase tracking-wider text-[10px]">
+                  <Users className="w-3.5 h-3.5" />
+                  Tus Aliados de las Sombras:
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {shadowAllies.map((a) => (
+                    <span
+                      key={a.id}
+                      className="px-2 py-0.5 rounded-lg bg-rose-900/50 border border-rose-700/60 text-rose-200 text-[11px] font-semibold"
+                    >
+                      {a.name} ({a.role})
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -440,7 +703,7 @@ export const RoleCard: React.FC<RoleCardProps> = ({
         {player.role === 'El Periodista' && (
           <div className="space-y-3 text-xs">
             <p className="text-neutral-300">
-              Entrevista a los invitados y formula tus teorías para destapar 2 roles especiales:
+              Formula teorías sobre las identidades secretas de otros invitados. Si aciertas su rol exacto, recibirás una recompensa de +15 monedas del Seven:
             </p>
 
             <div className="grid grid-cols-2 gap-2">

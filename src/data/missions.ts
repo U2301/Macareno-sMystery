@@ -150,13 +150,114 @@ export const GHOST_LORE_MISSIONS: Omit<PlayerMission, 'id' | 'progress' | 'curre
   }
 ];
 
-// Generates 5 unique missions per player
-export function generateFivePlayerMissions(isGhost: boolean): PlayerMission[] {
-  const sourcePool = isGhost ? GHOST_LORE_MISSIONS : FRIEND_LORE_MISSIONS;
-  const shuffled = [...sourcePool].sort(() => Math.random() - 0.5);
-  const selected = shuffled.slice(0, 5);
+// Misiones exclusivas para el Bando de las Sombras (Asesinos / Cómplices):
+// Son acciones sospechosas en la vida real que te exponen, pero al completarlas
+// ganas monedas para la tienda y además avanzan la barra colectiva de los inocentes (ayudan a los buenos).
+export const SHADOW_SUSPICIOUS_MISSIONS: Omit<PlayerMission, 'id' | 'progress' | 'currentCount' | 'completed'>[] = [
+  {
+    title: 'El Vaso Marcado del Asesino',
+    description: 'Ofrécele una bebida o una botana a un inocente sosteniéndole la mirada fija durante 5 segundos sin sonreír.',
+    type: 'sombra',
+    targetCount: 1,
+  },
+  {
+    title: 'El Sabotaje de Luz o Música',
+    description: 'Acércate al interruptor de la luz y apágala por 5 segundos, o ve al altavoz y cambia la canción a algo incómodo. Todos sospecharán de quién estuvo ahí.',
+    type: 'sombra',
+    targetCount: 1,
+  },
+  {
+    title: 'La Coartada Contradictoria',
+    description: 'Dile a dos inocentes por separado versiones diferentes de dónde estabas hace 5 minutos (ej: a uno que estabas en la cocina y a otro en el baño).',
+    type: 'sombra',
+    targetCount: 2,
+  },
+  {
+    title: 'El Acecho a Menos de 1 Metro',
+    description: 'Quédate parado a menos de un metro de cualquier inocente durante 30 segundos continuos fingiendo revisar tu celular.',
+    type: 'sombra',
+    targetCount: 1,
+  },
+  {
+    title: 'La Pregunta Incriminatoria',
+    description: 'Pregúntale en voz alta a un inocente delante de al menos dos personas: "¿Por qué estás tan nervioso/a hoy? Pareces culpable".',
+    type: 'sombra',
+    targetCount: 1,
+  },
+  {
+    title: 'El Objeto Plantado',
+    description: 'Deja discretamente una servilleta arrugada, una moneda o un limón en el bolsillo o junto al vaso de un inocente.',
+    type: 'sombra',
+    targetCount: 1,
+  },
+  {
+    title: 'El Falso Susurro de Muerte',
+    description: 'Acércate al oído de un inocente y susúrrale algo totalmente absurdo con voz tenebrosa (ej: "La pizza se enfría"), poniéndolo en alerta.',
+    type: 'sombra',
+    targetCount: 1,
+  },
+  {
+    title: 'Sembrar la Falsa Alarma',
+    description: 'Sugiere en voz alta a dos personas: "Deberíamos tocar la sirena de asamblea ya mismo", provocando que cuestionen tu urgencia.',
+    type: 'sombra',
+    targetCount: 2,
+  },
+  {
+    title: 'El Brindis de Judas',
+    description: 'Choca tu vaso con un inocente mirándolo a los ojos y diciendo: "Por los que todavía siguen vivos en esta casa".',
+    type: 'sombra',
+    targetCount: 1,
+  },
+  {
+    title: 'La Salida Falsa a Oscuras',
+    description: 'Camina hacia la puerta de salida o hacia una habitación oscura como si te retiraras, quédate 15 segundos y regresa mirando a todos.',
+    type: 'sombra',
+    targetCount: 1,
+  },
+  {
+    title: 'Ostentación Clandestina del Seven',
+    description: 'Presume ante un inocente que tienes monedas para comprar en el Mercado del Seven, pero niégate a decir de qué misión salieron.',
+    type: 'sombra',
+    targetCount: 1,
+  },
+  {
+    title: 'El Guiño Cómplice',
+    description: 'Hazle un guiño evidente o un gesto de "guardar silencio" con el dedo en los labios a un inocente que te esté mirando.',
+    type: 'sombra',
+    targetCount: 1,
+  }
+];
 
-  return selected.map((m, idx) => ({
+// Algoritmo Fisher-Yates de alta entropía para mezclas justas
+function fisherYatesShuffle<T>(arr: T[]): T[] {
+  const result = [...arr];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+// Genera 5 misiones únicas por jugador según su estado y bando
+export function generateFivePlayerMissions(isGhost: boolean, isShadow: boolean = false): PlayerMission[] {
+  let selectedMissions: Omit<PlayerMission, 'id' | 'progress' | 'currentCount' | 'completed'>[] = [];
+
+  if (isGhost) {
+    const shuffledGhosts = fisherYatesShuffle(GHOST_LORE_MISSIONS);
+    selectedMissions = shuffledGhosts.slice(0, 5);
+  } else if (isShadow) {
+    // Para las Sombras: 3 misiones sospechosas específicas + 2 misiones de lore para camuflarse
+    const shuffledShadows = fisherYatesShuffle(SHADOW_SUSPICIOUS_MISSIONS);
+    const shuffledLore = fisherYatesShuffle(FRIEND_LORE_MISSIONS);
+    selectedMissions = [...shuffledShadows.slice(0, 3), ...shuffledLore.slice(0, 2)];
+    selectedMissions = fisherYatesShuffle(selectedMissions);
+  } else {
+    // Para los inocentes: 5 misiones variadas de lore y desafíos
+    const shuffledInnocents = fisherYatesShuffle(FRIEND_LORE_MISSIONS);
+    selectedMissions = shuffledInnocents.slice(0, 5);
+  }
+
+  return selectedMissions.map((m, idx) => ({
     id: `mis_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
     title: m.title,
     description: m.description,
@@ -165,6 +266,6 @@ export function generateFivePlayerMissions(isGhost: boolean): PlayerMission[] {
     targetCount: m.targetCount,
     currentCount: 0,
     completed: false,
-    rewardCoins: 5 + ((idx * 3) % 3) * 5, // 5, 10 o 15 monedas
+    rewardCoins: m.type === 'sombra' ? 12 : 5 + ((idx * 3) % 3) * 5, // Sombras ganan 12 monedas por arriesgarse
   }));
 }

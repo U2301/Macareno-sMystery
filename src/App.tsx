@@ -228,31 +228,65 @@ export default function App() {
     sendRoomAction('hacker_emp');
   };
 
-  const handleUseFotografo = (targetId: string) => {
-    sendRoomAction('fotografo_snap', { targetId });
+  const handleUseFotografo = async (targetId: string) => {
+    const res = await sendRoomAction('fotografo_snap', { targetId });
+    if (res.success && res.player) {
+      setCurrentPlayer(res.player);
+      soundManager.playCameraClick();
+    }
   };
 
-  const handleUseEscolta = (targetId: string) => {
-    sendRoomAction('escolta_protect', { targetId });
+  const handleAccelerateFotografo = async () => {
+    const res = await sendRoomAction('fotografo_accelerate');
+    if (res.success && res.player) {
+      setCurrentPlayer(res.player);
+      soundManager.playSuccess();
+    }
   };
 
-  const handleConfirmEscoltaFaceToFace = () => {
-    sendRoomAction('escolta_confirm_face_to_face');
+  const handleUseEscolta = async (targetId: string) => {
+    const res = await sendRoomAction('escolta_protect', { targetId });
+    if (res.success && res.player) {
+      setCurrentPlayer(res.player);
+      soundManager.playTick();
+    }
   };
 
-  const handleUseChismoso = (p1Id: string, p2Id: string) => {
-    const p1 = players.find((p) => p.id === p1Id);
-    const p2 = players.find((p) => p.id === p2Id);
-    return { sameTeam: p1?.team === p2?.team };
+  const handleConfirmEscoltaFaceToFace = async () => {
+    const res = await sendRoomAction('escolta_confirm_face_to_face');
+    if (res.success && res.player) {
+      setCurrentPlayer(res.player);
+      soundManager.playSuccess();
+    }
   };
 
-  const handleSubmitPeriodistaTheory = (targetId: string, guessedRole: RoleType) => {
-    const target = players.find((p) => p.id === targetId);
-    return target?.role === guessedRole;
+  const handleUseChismoso = async (p1Id: string, p2Id: string) => {
+    const res = await sendRoomAction('chismoso_compare', { p1Id, p2Id });
+    if (res.success && res.player) {
+      setCurrentPlayer(res.player);
+      soundManager.playSuccess();
+      return { success: true, chismosoReport: res.chismosoReport };
+    }
+    return { success: false, error: res.error || 'Error al cotejar' };
   };
 
-  const handleSendMessage = (receiverId: string | null, content: string, asChameleon?: boolean) => {
-    sendRoomAction('send_message', { receiverId, content, asChameleon });
+  const handleSubmitPeriodistaTheory = async (targetId: string, guessedRole: RoleType) => {
+    const res = await sendRoomAction('periodista_investigate', { targetId, guessedRole });
+    if (res.success) {
+      if (res.player) setCurrentPlayer(res.player);
+      if (res.isCorrect) soundManager.playSuccess();
+      return !!res.isCorrect;
+    }
+    return false;
+  };
+
+  const handleSendMessage = (
+    receiverId: string | null,
+    content: string,
+    asChameleon?: boolean,
+    targetDisguiseName?: string
+  ) => {
+    sendRoomAction('send_message', { receiverId, content, asChameleon, targetDisguiseName });
   };
 
   const handleAskAI = async (query: string): Promise<string> => {
@@ -460,12 +494,14 @@ export default function App() {
               players={players}
               currentPhase={gameState.phase}
               murderHistory={gameState.murderHistory}
+              hackerGlitchActiveUntil={gameState.hackerGlitchActiveUntil}
               onRegisterKill={(code) => handleRegisterKill(code)}
               onTriggerHackerPulse={handleTriggerHackerPulse}
               onUseChismoso={handleUseChismoso}
               onUseEscolta={handleUseEscolta}
               onConfirmEscoltaFaceToFace={handleConfirmEscoltaFaceToFace}
               onUseFotografo={handleUseFotografo}
+              onAccelerateFotografo={handleAccelerateFotografo}
               onSubmitPeriodistaTheory={handleSubmitPeriodistaTheory}
             />
 

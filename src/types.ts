@@ -21,12 +21,32 @@ export interface PlayerMission {
   id: string;
   title: string;
   description: string;
-  type: 'social' | 'desafio' | 'fantasma' | 'lore';
+  type: 'social' | 'desafio' | 'fantasma' | 'lore' | 'sombra';
   progress: number; // 0 - 100
   targetCount: number;
   currentCount: number;
   completed: boolean;
   rewardCoins?: number; // Monedas ganadas al completar
+}
+
+export interface RevealedPhoto {
+  id: string;
+  targetId: string;
+  targetName: string;
+  team: TeamType;
+  isHostile: boolean;
+  revealedAt: string;
+}
+
+export interface ChismosoReport {
+  id: string;
+  p1Id: string;
+  p1Name: string;
+  p2Id: string;
+  p2Name: string;
+  sameTeam: boolean;
+  verdict: string;
+  timestamp: string;
 }
 
 export interface Player {
@@ -48,9 +68,13 @@ export interface Player {
   missionCompleted?: boolean;
   protectedByEscoltaUntil?: number; // timestamp
   hasEscoltaSpokenFaceToFace?: boolean;
+  escoltaTargetId?: string;
+  escoltaProtectedUntil?: number;
   photographCooldownUntil?: number;
   investigationPending?: { targetId: string; revealTime: number };
+  revealedPhotos?: RevealedPhoto[];
   chismosoUsed: boolean;
+  chismosoReport?: ChismosoReport;
   camaleonUsed: boolean;
   hackerUsed: boolean;
   periodistaTheories: { targetId: string; guessedRole: RoleType; isCorrect?: boolean }[];
@@ -165,6 +189,7 @@ export interface GameState {
   emergencyCallerName: string | null;
   activeEvent: PartyEvent | null;
   eventTimeRemaining: number;
+  nextEventCooldown?: number;
   votes: Record<string, string>; // voterId -> targetId | 'skip'
   meetingRound: number;
   hackerGlitchActiveUntil: number | null;
