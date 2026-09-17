@@ -1,0 +1,6 @@
+{
+  "name": "IRL Party Mystery",
+  "description": "Plataforma para hostear juegos de deducción social y rol en vivo en fiestas y reuniones.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
