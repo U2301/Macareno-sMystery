@@ -165,5 +165,6 @@ export function generateFivePlayerMissions(isGhost: boolean): PlayerMission[] {
     targetCount: m.targetCount,
     currentCount: 0,
     completed: false,
+    rewardCoins: 5 + ((idx * 3) % 3) * 5, // 5, 10 o 15 monedas
   }));
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Send, Users, Lock, MessageSquare, Sparkles, Ghost, ShieldAlert } from 'lucide-react';
+import { Send, Users, Lock, MessageSquare, Sparkles, Ghost, ShieldAlert, Bot, HelpCircle } from 'lucide-react';
 import { ChatMessage, Player } from '../types';
 
 interface ChatSystemProps {
@@ -34,6 +34,13 @@ export const ChatSystem: React.FC<ChatSystemProps> = ({
     setIsChameleonDisguiseActive(false);
   };
 
+  const handleInsertMention = (text: string) => {
+    setInputContent((prev) => {
+      if (prev.includes(text)) return prev;
+      return `${text} ${prev}`.trim();
+    });
+  };
+
   // Filter messages for current view
   const visibleMessages = messages.filter((m) => {
     if (activeChannel === 'general') {
@@ -50,7 +57,7 @@ export const ChatSystem: React.FC<ChatSystemProps> = ({
   const activeTargetPlayer = players.find((p) => p.id === activeChannel);
 
   return (
-    <div className="bg-neutral-900/80 border border-neutral-800 rounded-3xl overflow-hidden flex flex-col h-[520px]">
+    <div className="bg-neutral-900/80 border border-neutral-800 rounded-3xl overflow-hidden flex flex-col h-[530px]">
       {/* Channels Nav */}
       <div className="p-3 border-b border-neutral-800 bg-neutral-950/70 flex items-center gap-2 overflow-x-auto scrollbar-none">
         <button
@@ -99,7 +106,11 @@ export const ChatSystem: React.FC<ChatSystemProps> = ({
           {activeChannel === 'general' ? (
             <>
               <Users className="w-4 h-4 text-rose-400" />
-              <span>Canal Público de la Fiesta (Visible para todos)</span>
+              <span>Canal Público de la Fiesta</span>
+              <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/70 border border-emerald-800 text-emerald-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                IA activa
+              </span>
             </>
           ) : (
             <>
@@ -127,7 +138,7 @@ export const ChatSystem: React.FC<ChatSystemProps> = ({
             }`}
           >
             <Sparkles className="w-3 h-3 text-purple-300" />
-            {isChameleonDisguiseActive ? 'Suplantación Activa' : 'Suplantar Identidad Caída'}
+            {isChameleonDisguiseActive ? 'Suplantación Activa' : 'Suplantar Identidad'}
           </button>
         )}
       </div>
@@ -140,14 +151,15 @@ export const ChatSystem: React.FC<ChatSystemProps> = ({
             <p>No hay mensajes en esta conversación aún.</p>
             <p className="text-[11px] text-neutral-600 mt-1">
               {activeChannel === 'general'
-                ? 'Comenta sobre las pistas o comparte una sospecha con la fiesta.'
+                ? 'Habla con tus amigos o invoca al @Árbitro IA para que intervenga en la partida.'
                 : 'Pacta una alianza secreta o pregunta coartadas en privado.'}
             </p>
           </div>
         ) : (
           visibleMessages.map((msg) => {
             const isMe = msg.senderId === currentPlayer.id && !msg.isChameleon;
-            const isSystem = msg.isSystem;
+            const isSystem = msg.isSystem && !msg.isAI;
+            const isAIArbitrator = msg.isAI || msg.senderName === 'ÁRBITRO IA';
 
             if (isSystem) {
               return (
@@ -157,6 +169,25 @@ export const ChatSystem: React.FC<ChatSystemProps> = ({
                 >
                   <span className="font-semibold text-rose-400 mr-1.5">[SISTEMA]</span>
                   {msg.content}
+                </div>
+              );
+            }
+
+            // Special AI Arbitrator message bubble
+            if (isAIArbitrator) {
+              return (
+                <div
+                  key={msg.id}
+                  className="p-3 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-amber-100 my-2 shadow-lg shadow-amber-950/20"
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="flex items-center gap-1.5 text-xs font-black text-amber-300 tracking-wide uppercase">
+                      <Bot className="w-3.5 h-3.5 text-amber-400" />
+                      Árbitro IA
+                    </span>
+                    <span className="text-[10px] text-amber-400/70 font-mono">{msg.timestamp}</span>
+                  </div>
+                  <p className="text-xs leading-relaxed text-amber-50">{msg.content}</p>
                 </div>
               );
             }
@@ -194,6 +225,35 @@ export const ChatSystem: React.FC<ChatSystemProps> = ({
         )}
       </div>
 
+      {/* Quick AI mention bar in general chat */}
+      {activeChannel === 'general' && (
+        <div className="px-3 py-1.5 bg-neutral-950/90 border-t border-neutral-800/60 flex items-center gap-1.5 overflow-x-auto scrollbar-none text-[11px]">
+          <span className="text-neutral-500 text-[10px] uppercase font-bold shrink-0">Invocar:</span>
+          <button
+            type="button"
+            onClick={() => handleInsertMention('@Árbitro IA')}
+            className="px-2 py-0.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-semibold flex items-center gap-1 shrink-0 transition"
+          >
+            <Bot className="w-3 h-3" />
+            @Árbitro IA
+          </button>
+          <button
+            type="button"
+            onClick={() => handleInsertMention('¿Quién es el más sospechoso?')}
+            className="px-2 py-0.5 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 shrink-0 transition"
+          >
+            ¿Quién es sospechoso?
+          </button>
+          <button
+            type="button"
+            onClick={() => handleInsertMention('¿Quién comió pizza en el Seven?')}
+            className="px-2 py-0.5 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 shrink-0 transition"
+          >
+            🍕 Pizza en el Seven
+          </button>
+        </div>
+      )}
+
       {/* Input bar */}
       <form onSubmit={handleSend} className="p-3 bg-neutral-950/80 border-t border-neutral-800 flex gap-2">
         <input
@@ -202,7 +262,7 @@ export const ChatSystem: React.FC<ChatSystemProps> = ({
             isChameleonDisguiseActive
               ? `Escribiendo como ${deadPlayers[0]?.name} (Suplantación)...`
               : activeChannel === 'general'
-              ? 'Mensaje a toda la fiesta...'
+              ? 'Escribe a la fiesta o menciona @Árbitro IA...'
               : `Susurro privado a ${activeTargetPlayer?.name}...`
           }
           value={inputContent}
@@ -212,7 +272,7 @@ export const ChatSystem: React.FC<ChatSystemProps> = ({
         <button
           type="submit"
           disabled={!inputContent.trim()}
-          className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+          className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0"
         >
           <Send className="w-3.5 h-3.5" />
           Enviar

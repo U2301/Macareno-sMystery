@@ -9,7 +9,8 @@ import {
   TeamType,
   ChatMessage,
   MurderReport,
-  PartyEvent
+  PartyEvent,
+  SHOP_ITEMS
 } from './src/types';
 import { generateFivePlayerMissions } from './src/data/missions';
 import { PARTY_EVENTS, getRandomEvent } from './src/data/events';
@@ -96,6 +97,92 @@ function balanceRolesForPlayers(playerCount: number): RoleType[] {
 
   // Shuffle roles
   return roles.sort(() => Math.random() - 0.5);
+}
+
+// AI Group Chat Intervention: listens to group chatter and intervenes with dynamic wit
+async function triggerAIGroupIntervention(room: RoomData, senderName: string, messageContent: string) {
+  const recentMessages = room.chatMessages
+    .filter((m) => !m.receiverId)
+    .slice(-6)
+    .map((m) => `${m.senderName}: "${m.content}"`)
+    .join('\n');
+
+  const alivePlayers = room.players.filter((p) => p.isAlive).map((p) => p.name).join(', ');
+  const deadPlayers = room.players.filter((p) => !p.isAlive).map((p) => p.name).join(', ');
+  const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  let aiIntervention = '';
+
+  try {
+    const ai = getAI();
+    if (ai) {
+      const prompt = `Eres el ÁRBITRO IA y Maestro de la Fiesta en un juego presencial de deducción social en tiempo real entre amigos.
+Estás monitoreando el chat grupal que todos ven en sus celulares mientras se miran a la cara en la casa.
+Jugadores vivos: ${alivePlayers}.
+Almas caídas: ${deadPlayers || 'ninguno aún'}.
+Anécdotas y lore del grupo:
+- Luisda el migajero (siempre deja migajas).
+- León el mandilón.
+- Uriel la rata (tacaño con comida/tragos).
+- El caballo en Día de Muertos.
+- Jackie siempre comiendo en la uni.
+- Meta AI el metiche.
+- En Cancún todo cambió para bien.
+- Todos odian a Majo y a la canción Superestrella.
+- Los Hidrotemplados es la gran banda mítica.
+- Siempre comen pizza o van al Seven.
+- La frase secreta de muerte es: "¿Qué traes allí?".
+
+Historial reciente del chat general:
+${recentMessages}
+
+${senderName} acaba de decir: "${messageContent}".
+
+Tu labor: Intervén como Árbitro IA con un comentario muy breve (máximo 1 o 2 oraciones concisas), picante, hilarante o misterioso.
+- Si te preguntaron o mencionaron (@IA o @árbitro), responde directamente con tono de juez supremo de la fiesta.
+- Si se están acusando o debatiendo, siembra cizaña, señala una contradicción, advierte de las sombras o cita una anécdota.
+- NUNCA reveles explícitamente quién es el asesino.`;
+
+      const resp = await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: prompt,
+      });
+
+      if (resp.text) {
+        aiIntervention = resp.text.trim();
+      }
+    }
+  } catch (err) {
+    console.error('AI group chat intervention error:', err);
+  }
+
+  // Fallback pool in case Gemini is unavailable or rate-limited
+  if (!aiIntervention) {
+    const fallbacks = [
+      `👀 Árbitro IA: Mientras ${senderName} escribe eso, alguien en la sala está mirando fijamente la rebanada de pizza con cara de sospechoso.`,
+      `⚖️ Intervención del Árbitro: Cuidado con las coartadas... recuerden que las migajas de Luisda nunca mienten.`,
+      `🕵️ El Árbitro IA toma nota: Mucho bla bla bla en el chat, pero nadie ha explicado qué hacían cerca de la cocina hace 5 minutos.`,
+      `🍕 Árbitro IA: No confíen en quien hable demasiado del Seven mientras susurra frases al oído de los demás.`,
+      `⚠️ Alerta del Árbitro: Detecto altos niveles de cinismo en las palabras de ${senderName}. ¿Quién se atreve a mirarle a los ojos?`,
+      `🎵 Árbitro IA: Esta discusión suena peor que la canción Superestrella. Más misiones y menos teatro.`,
+      `👁️ Susurro del Árbitro: Alguien en este grupo tiene las manos frías y el corazón de asesino. Sigan debatiendo...`,
+      `🐎 Árbitro IA: Si esa teoría fuera un caballo en Día de Muertos, ya se habría escapado trotando. Sean más observadores.`,
+      `🥤 Árbitro IA: ${senderName} habla mucho para alguien que no ha completado ni una sola misión de fiesta.`,
+      `🚨 Árbitro IA: El reloj sigue corriendo. Las sombras se preparan para preguntar otra vez "¿Qué traes allí?".`
+    ];
+    aiIntervention = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+  }
+
+  room.chatMessages.push({
+    id: 'ai_interv_' + Date.now(),
+    senderId: 'system',
+    senderName: 'ÁRBITRO IA',
+    receiverId: null,
+    content: aiIntervention,
+    timestamp: timeString,
+    isSystem: true,
+    isAI: true,
+  });
 }
 
 // Background Game Loop (1-second tick)
@@ -185,6 +272,7 @@ app.post('/api/rooms/create', (req, res) => {
     isAlive: true,
     isHost: true,
     emergencyCallsLeft: 1,
+    coins: 10,
     missions: generateFivePlayerMissions(false),
     chismosoUsed: false,
     camaleonUsed: false,
@@ -289,6 +377,7 @@ app.post('/api/rooms/join', (req, res) => {
     isAlive: true,
     isHost: false,
     emergencyCallsLeft: 1,
+    coins: 10,
     missions: generateFivePlayerMissions(false),
     chismosoUsed: false,
     camaleonUsed: false,
@@ -357,6 +446,9 @@ app.post('/api/rooms/:roomCode/start', async (req, res) => {
       team,
       isAlive: true,
       emergencyCallsLeft: 1,
+      coins: p.coins ?? 10,
+      hasBulletproofVest: false,
+      doubleVotesAvailable: 0,
       victimCode: Math.floor(1000 + Math.random() * 9000).toString(),
       missions: generateFivePlayerMissions(false),
       chismosoUsed: false,
@@ -471,6 +563,28 @@ app.post('/api/rooms/:roomCode/action', async (req, res) => {
       });
     }
 
+    // Bulletproof Vest check
+    if (victim.hasBulletproofVest) {
+      victim.hasBulletproofVest = false;
+      room.chatMessages.push({
+        id: 'vest_chat_' + Date.now(),
+        senderId: 'system',
+        senderName: 'ÁRBITRO IA',
+        receiverId: null,
+        content: `🛡️ ¡SALVADO POR EL CHALECO! ${victim.name} escuchó el susurro mortal en su oído, pero su Chaleco Antibalas absorbió el ataque. El chaleco ha quedado destruido, ¡pero sigue con vida!`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isSystem: true,
+        isAI: true,
+      });
+
+      return res.status(400).json({
+        error: `¡Ataque frustrado! ${victim.name} llevaba equipado un Chaleco Antibalas del mercado negro. El chaleco amortiguó el golpe y tu víctima sobrevivió.`,
+      });
+    }
+
+    // Reward killer with coins for elimination
+    actingPlayer.coins = (actingPlayer.coins || 0) + 10;
+
     // Turn victim into Alma Atormentadora with 5 ghost missions
     victim.isAlive = false;
     victim.role = 'Alma Atormentadora';
@@ -526,6 +640,12 @@ La pista no debe revelar directamente el nombre del asesino, sino un detalle sen
 
   // 2. Action: Emergency Buzzer
   if (actionType === 'emergency') {
+    if (room.state.hackerGlitchActiveUntil && room.state.hackerGlitchActiveUntil > Date.now()) {
+      return res.status(400).json({
+        error: '¡Sirena bloqueada! Hay una interferencia electromagnética activa en la fiesta.',
+      });
+    }
+
     if (!actingPlayer.isAlive || actingPlayer.emergencyCallsLeft <= 0) {
       return res.status(400).json({ error: 'No tienes llamadas de asamblea disponibles.' });
     }
@@ -622,10 +742,33 @@ La pista no debe revelar directamente el nombre del asesino, sino un detalle sen
       mission.completed = mission.currentCount >= mission.targetCount;
       mission.progress = Math.min(100, Math.round((mission.currentCount / mission.targetCount) * 100));
 
+      let earnedCoins = 0;
+      if (mission.completed) {
+        earnedCoins = mission.rewardCoins || 10;
+        actingPlayer.coins = (actingPlayer.coins || 0) + earnedCoins;
+
+        room.chatMessages.push({
+          id: 'reward_whisper_' + Date.now(),
+          senderId: 'system',
+          senderName: 'ÁRBITRO IA',
+          receiverId: actingPlayer.id,
+          content: `🪙 ¡Misión completada: "${mission.title}"! Has recibido +${earnedCoins} monedas del Seven. Saldo total: 🪙 ${actingPlayer.coins}.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isSystem: true,
+          isAI: true,
+        });
+      }
+
       // Increase collective task bar
       room.state.collectiveTaskProgress = Math.min(100, room.state.collectiveTaskProgress + 5);
 
-      return res.json({ success: true, mission, collectiveProgress: room.state.collectiveTaskProgress });
+      return res.json({
+        success: true,
+        mission,
+        earnedCoins,
+        newBalance: actingPlayer.coins,
+        collectiveProgress: room.state.collectiveTaskProgress
+      });
     }
     return res.status(400).json({ error: 'Misión no encontrada o ya completada.' });
   }
@@ -667,6 +810,50 @@ La pista no debe revelar directamente el nombre del asesino, sino un detalle sen
 
     room.chatMessages.push(newMsg);
     if (asChameleon) actingPlayer.camaleonUsed = true;
+
+    // AI group intervention check: when talking in general chat, the AI arbitrator listens and responds
+    if (!receiverId) {
+      const lower = (content || '').toLowerCase();
+      const mentionsAI =
+        lower.includes('@ia') ||
+        lower.includes('@árbitro') ||
+        lower.includes('@arbitro') ||
+        lower.includes('arbitro') ||
+        lower.includes('árbitro') ||
+        lower.includes('quién es') ||
+        lower.includes('quien es');
+
+      const isSpicy =
+        lower.includes('asesin') ||
+        lower.includes('culpable') ||
+        lower.includes('migaja') ||
+        lower.includes('luisda') ||
+        lower.includes('león') ||
+        lower.includes('leon') ||
+        lower.includes('mandil') ||
+        lower.includes('uriel') ||
+        lower.includes('rata') ||
+        lower.includes('jackie') ||
+        lower.includes('pizza') ||
+        lower.includes('seven') ||
+        lower.includes('cancún') ||
+        lower.includes('cancun') ||
+        lower.includes('caballo') ||
+        lower.includes('majo') ||
+        lower.includes('superestrella') ||
+        lower.includes('sospech') ||
+        lower.includes('traes allí');
+
+      const recentAIMessages = room.chatMessages.slice(-5).filter((m) => m.isAI).length;
+
+      if (mentionsAI || isSpicy || recentAIMessages === 0) {
+        setTimeout(() => {
+          triggerAIGroupIntervention(room, actingPlayer.name, content).catch((e) =>
+            console.error('Intervention error:', e)
+          );
+        }, 1200);
+      }
+    }
 
     return res.json({ success: true, message: newMsg });
   }
@@ -726,6 +913,132 @@ Responde con tono de oráculo sarcástico, misterioso y divertido, dando pistas 
     }
 
     return res.json({ success: true, reply });
+  }
+
+  // 12. Action: Buy Item from Black Market / Shop
+  if (actionType === 'buy_item') {
+    const { itemId } = payload;
+    const item = SHOP_ITEMS.find((it) => it.id === itemId);
+    if (!item) {
+      return res.status(404).json({ error: 'Artículo no encontrado en el catálogo del mercado negro.' });
+    }
+
+    if ((actingPlayer.coins || 0) < item.cost) {
+      return res.status(400).json({ error: `Monedas insuficientes. Necesitas ${item.cost} monedas del Seven.` });
+    }
+
+    actingPlayer.coins = (actingPlayer.coins || 0) - item.cost;
+    let buyMessage = `Has adquirido ${item.name}.`;
+
+    if (itemId === 'vest') {
+      actingPlayer.hasBulletproofVest = true;
+      buyMessage = '¡Chaleco Antibalas equipado! Estás blindado contra tu siguiente intento de asesinato.';
+    } else if (itemId === 'double_vote') {
+      actingPlayer.doubleVotesAvailable = (actingPlayer.doubleVotesAvailable || 0) + 1;
+      buyMessage = '¡Voto Doble adquirido! Tu voto valdrá x2 en la próxima asamblea de emergencia.';
+    } else if (itemId === 'seven_snack') {
+      room.state.collectiveTaskProgress = Math.min(100, room.state.collectiveTaskProgress + 8);
+      buyMessage = '¡Ronda de botana comprada! La meta colectiva de la fiesta subió +8%.';
+      room.chatMessages.push({
+        id: 'snack_chat_' + Date.now(),
+        senderId: 'system',
+        senderName: 'MERCADO DEL SEVEN',
+        receiverId: null,
+        content: `🍕 ¡RONDA DE PIZZA! ${actingPlayer.name} compró botanas para toda la fiesta. La meta colectiva de los inocentes subió un +8%.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isSystem: true,
+      });
+    } else if (itemId === 'emp_jam') {
+      room.state.hackerGlitchActiveUntil = Date.now() + 90 * 1000;
+      buyMessage = 'Interferidor activado: sirenas de asamblea bloqueadas por 90 segundos.';
+      room.chatMessages.push({
+        id: 'jam_chat_' + Date.now(),
+        senderId: 'system',
+        senderName: 'MERCADO DEL SEVEN',
+        receiverId: null,
+        content: `📡 ¡INTERFERENCIA TOTAL! ${actingPlayer.name} activó un inhibidor de señal. Las sirenas de asamblea están bloqueadas durante 90 segundos.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isSystem: true,
+      });
+    } else if (itemId === 'bribe_clue') {
+      let clueText = 'El asesino se ha acercado a la mesa de snacks y suele mirar disimuladamente a los lados.';
+      try {
+        const ai = getAI();
+        if (ai) {
+          const killers = room.players.filter((p) => p.role === 'Asesino');
+          const killerNames = killers.map((k) => k.name).join(' o ');
+          const prompt = `Eres el Forense Clandestino de la fiesta. Un jugador (${actingPlayer.name}) te pagó un soborno de 10 monedas.
+Los asesinos son: ${killerNames || 'alguien entre las sombras'}.
+Genera una pista sutil, picante y confidencial sobre los hábitos o vestimenta de los asesinos en la reunión (sin decir el nombre directamente, pero dando un indicio como su cercanía a la cocina, su postura, si comió pizza o si habló de Cancún o del Seven). Máximo 1 o 2 oraciones breves.`;
+          const resp = await ai.models.generateContent({
+            model: 'gemini-3.8-flash',
+            contents: prompt,
+          });
+          if (resp.text) clueText = resp.text.trim();
+        }
+      } catch (e) {
+        console.error('Clue generation error:', e);
+      }
+
+      actingPlayer.purchasedClues = actingPlayer.purchasedClues || [];
+      actingPlayer.purchasedClues.push(clueText);
+
+      room.chatMessages.push({
+        id: 'clue_whisper_' + Date.now(),
+        senderId: 'system',
+        senderName: 'FORENSE CLANDESTINO',
+        receiverId: actingPlayer.id,
+        content: `🕵️ PISTA CONFIDENCIAL POR SOBORNO: "${clueText}"`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isSystem: true,
+        isAI: true,
+      });
+
+      buyMessage = `Pista obtenida y enviada a tus susurros privados: "${clueText}"`;
+    }
+
+    return res.json({
+      success: true,
+      message: buyMessage,
+      player: actingPlayer,
+      roomState: room.state,
+    });
+  }
+
+  // 13. Action: Transfer Coins to Friend
+  if (actionType === 'transfer_coins') {
+    const { targetPlayerId, amount } = payload;
+    const numAmount = parseInt(amount) || 0;
+    if (numAmount <= 0) {
+      return res.status(400).json({ error: 'La cantidad debe ser mayor a 0.' });
+    }
+    if ((actingPlayer.coins || 0) < numAmount) {
+      return res.status(400).json({ error: 'No cuentas con suficientes monedas para transferir.' });
+    }
+
+    const targetPlayer = room.players.find((p) => p.id === targetPlayerId);
+    if (!targetPlayer) {
+      return res.status(404).json({ error: 'Jugador destinatario no encontrado.' });
+    }
+
+    actingPlayer.coins = (actingPlayer.coins || 0) - numAmount;
+    targetPlayer.coins = (targetPlayer.coins || 0) + numAmount;
+
+    room.chatMessages.push({
+      id: 'tx_chat_' + Date.now(),
+      senderId: 'system',
+      senderName: 'BANCO DEL SEVEN',
+      receiverId: null,
+      content: `💸 ¡TRANSFERENCIA! ${actingPlayer.name} le transfirió ${numAmount} monedas a ${targetPlayer.name}. ¿Soborno o pago de pizza?`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isSystem: true,
+    });
+
+    return res.json({
+      success: true,
+      senderBalance: actingPlayer.coins,
+      message: `Has transferido ${numAmount} monedas a ${targetPlayer.name}.`,
+    });
   }
 
   res.status(400).json({ error: 'Acción no reconocida' });

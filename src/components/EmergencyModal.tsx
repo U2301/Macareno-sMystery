@@ -45,10 +45,13 @@ export const EmergencyModal: React.FC<EmergencyModalProps> = ({
   };
 
   const handleManualConclude = () => {
-    // Count votes
+    // Count votes taking into account Double Vote power from the Seven shop
     const counts: Record<string, number> = {};
-    (Object.values(votes) as string[]).forEach((target: string) => {
-      counts[target] = (counts[target] || 0) + 1;
+    Object.entries(votes).forEach(([voterId, target]) => {
+      const targetKey = String(target);
+      const voter = players.find((p) => p.id === voterId);
+      const weight = voter?.doubleVotesAvailable && voter.doubleVotesAvailable > 0 ? 2 : 1;
+      counts[targetKey] = (counts[targetKey] || 0) + weight;
     });
 
     let topTarget: string | null = null;
@@ -132,6 +135,18 @@ export const EmergencyModal: React.FC<EmergencyModalProps> = ({
                 {selectedTarget ? 'Voto registrado' : 'Pendiente de votar'}
               </span>
             </div>
+
+            {currentPlayer.doubleVotesAvailable && currentPlayer.doubleVotesAvailable > 0 ? (
+              <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs flex items-center justify-between">
+                <span className="flex items-center gap-1.5 font-bold">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  Poder de Voto Doble Activo
+                </span>
+                <span className="text-[10px] font-mono bg-amber-500/20 px-2 py-0.5 rounded-md">
+                  x2 Votos
+                </span>
+              </div>
+            ) : null}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto p-1">
               {alivePlayers.map((player) => {

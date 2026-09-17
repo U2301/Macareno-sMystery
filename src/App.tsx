@@ -20,7 +20,8 @@ import {
   Sparkles,
   Bot,
   Copy,
-  CheckCircle
+  CheckCircle,
+  Coins
 } from 'lucide-react';
 import {
   Player,
@@ -40,6 +41,7 @@ import { JoinScreen } from './components/JoinScreen';
 import { LobbyScreen } from './components/LobbyScreen';
 import { MissionsPanel } from './components/MissionsPanel';
 import { AIOracleModal } from './components/AIOracleModal';
+import { ShopPanel } from './components/ShopPanel';
 
 export default function App() {
   // Session / Room state
@@ -54,7 +56,7 @@ export default function App() {
   const [isAIOracleOpen, setIsAIOracleOpen] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [joinErrorMessage, setJoinErrorMessage] = useState<string | null>(null);
-  const [activeMobileTab, setActiveMobileTab] = useState<'role' | 'missions' | 'chat'>('role');
+  const [activeMobileTab, setActiveMobileTab] = useState<'role' | 'missions' | 'shop' | 'chat'>('role');
 
   const prevPhaseRef = useRef<GamePhase | null>(null);
   const prevEmergencyRef = useRef<boolean>(false);
@@ -258,6 +260,29 @@ export default function App() {
     return res.reply || 'El Árbitro IA guarda silencio.';
   };
 
+  const handleBuyItem = async (itemId: string) => {
+    const res = await sendRoomAction('buy_item', { itemId });
+    if (res.success) {
+      if (res.player) setCurrentPlayer(res.player);
+      if (res.roomState) setGameState(res.roomState);
+      soundManager.playSuccess();
+      return { success: true, message: res.message };
+    }
+    return { success: false, message: res.error || 'Error al comprar.' };
+  };
+
+  const handleTransferCoins = async (targetPlayerId: string, amount: number) => {
+    const res = await sendRoomAction('transfer_coins', { targetPlayerId, amount });
+    if (res.success) {
+      if (res.senderBalance !== undefined) {
+        setCurrentPlayer((prev) => (prev ? { ...prev, coins: res.senderBalance } : prev));
+      }
+      soundManager.playTick();
+      return { success: true, message: res.message };
+    }
+    return { success: false, message: res.error || 'Error al transferir.' };
+  };
+
   // If not joined to any room yet -> Show JoinScreen
   if (!currentRoomCode || !currentPlayer || !gameState) {
     return (
@@ -360,8 +385,19 @@ export default function App() {
             </div>
           </div>
 
-          {/* Phase Cycle Badge + Timer */}
-          <div className="flex items-center gap-2">
+          {/* Phase Cycle Badge + Timer + Wallet + AI */}
+          <div className="flex items-center gap-1.5">
+            {/* Coins wallet button */}
+            <button
+              id="open-shop-header-btn"
+              onClick={() => setActiveMobileTab('shop')}
+              className="flex items-center gap-1 px-2 py-1 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-mono font-bold text-xs hover:bg-amber-500/25 transition active:scale-95"
+              title="Abrir Mercado del Seven"
+            >
+              <Coins className="w-3.5 h-3.5 text-amber-400" />
+              <span>🪙 {currentPlayer.coins ?? 0}</span>
+            </button>
+
             <div
               className={`flex items-center gap-1 px-2.5 py-1 rounded-xl border text-xs font-mono font-bold ${
                 isNight
@@ -488,7 +524,17 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 3: Secret Whispers & Party Chat */}
+        {/* TAB 3: Mercado Negro del Seven (Shop & Transfers) */}
+        {activeMobileTab === 'shop' && (
+          <ShopPanel
+            player={currentPlayer}
+            players={players}
+            onBuyItem={handleBuyItem}
+            onTransferCoins={handleTransferCoins}
+          />
+        )}
+
+        {/* TAB 4: Secret Whispers & Party Chat */}
         {activeMobileTab === 'chat' && (
           <ChatSystem
             currentPlayer={currentPlayer}
@@ -500,8 +546,8 @@ export default function App() {
       </main>
 
       {/* Fixed Bottom Navigation Bar for Cellphones */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-neutral-900/95 backdrop-blur border-t border-neutral-800 px-4 py-2">
-        <div className="max-w-md mx-auto grid grid-cols-3 gap-2">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-neutral-900/95 backdrop-blur border-t border-neutral-800 px-3 py-2">
+        <div className="max-w-md mx-auto grid grid-cols-4 gap-1.5">
           <button
             id="tab-role"
             onClick={() => setActiveMobileTab('role')}
@@ -525,10 +571,26 @@ export default function App() {
             }`}
           >
             <Target className="w-4 h-4" />
-            <span className="text-[10px] mt-0.5">5 Misiones</span>
+            <span className="text-[10px] mt-0.5">Misiones</span>
             {(currentPlayer.missions || []).some((m) => !m.completed) && (
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 absolute top-1 right-8" />
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 absolute top-1 right-5" />
             )}
+          </button>
+
+          <button
+            id="tab-shop"
+            onClick={() => setActiveMobileTab('shop')}
+            className={`flex flex-col items-center justify-center py-1.5 rounded-xl transition relative ${
+              activeMobileTab === 'shop'
+                ? 'bg-amber-500/25 text-amber-300 font-bold border border-amber-500/30'
+                : 'text-neutral-400 hover:text-neutral-200'
+            }`}
+          >
+            <Coins className="w-4 h-4 text-amber-400" />
+            <span className="text-[10px] mt-0.5 flex items-center gap-0.5">
+              Tienda
+              <span className="text-[9px] font-mono text-amber-400 font-bold">({currentPlayer.coins ?? 0})</span>
+            </span>
           </button>
 
           <button
@@ -541,7 +603,7 @@ export default function App() {
             }`}
           >
             <MessageSquare className="w-4 h-4" />
-            <span className="text-[10px] mt-0.5">Chat & Susurros</span>
+            <span className="text-[10px] mt-0.5">Chat & IA</span>
           </button>
         </div>
       </nav>
